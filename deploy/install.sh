@@ -18,7 +18,8 @@ DOMAIN="${DOMAIN:-${1:-}}"
 EMAIL="${EMAIL:-}"
 SKIP_TLS="${SKIP_TLS:-0}"
 QUARTZ_REPO="${QUARTZ_REPO:-https://github.com/jackyzha0/quartz.git}"
-ARTALK_VERSION="${ARTALK_VERSION:-latest}"
+# 默认钉死版本，避免卡在 api.github.com；需要最新版时 export ARTALK_VERSION=latest
+ARTALK_VERSION="${ARTALK_VERSION:-v2.10.0}"
 
 [[ -n "${DOMAIN}" ]] || die "请设置 DOMAIN，例如: DOMAIN=notes.example.com bash $0"
 [[ "${DOMAIN}" =~ ^[A-Za-z0-9.-]+$ ]] || die "DOMAIN 格式不正确: ${DOMAIN}"
