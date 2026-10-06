@@ -55,6 +55,29 @@ bash deploy/install.sh
 SKIP_TLS=1 DOMAIN=你的域名.example.com bash deploy/install.sh
 ```
 
+### 若卡在「安装 Artalk」
+
+Artalk **不是 yum 包**，要从 GitHub Releases 下载二进制。  
+配置阿里云/腾讯云 **yum 镜像解决不了**这一步；国内 ECS 直连 GitHub 常会一直卡住。
+
+处理：
+
+1. `Ctrl+C` 中断当前安装  
+2. 用代理手动下载并安装：
+
+```bash
+cd /tmp
+curl -fL -o artalk.tar.gz \
+  https://ghproxy.net/https://github.com/ArtalkJS/Artalk/releases/download/v2.10.0/artalk_v2.10.0_linux_amd64.tar.gz
+tar -xzf artalk.tar.gz
+install -m 755 artalk_v2.10.0_linux_amd64/artalk /usr/local/bin/artalk
+artalk version
+```
+
+3. 再重跑 `DOMAIN=你的域名 bash deploy/install.sh`（已装好的 Artalk 会跳过下载）
+
+新版脚本会优先走 `ghproxy.net`，并给 curl 加超时，避免无限等待。
+
 ### 若报错 `Unable to find a match: nginx`
 
 国内 ECS 常访问不了 `nginx.org`。请优先用 **Anolis/阿里云模块源**（不依赖 nginx.org）：
