@@ -55,6 +55,25 @@ bash deploy/install.sh
 SKIP_TLS=1 DOMAIN=你的域名.example.com bash deploy/install.sh
 ```
 
+### 若报错 `Unable to find a match: nginx`
+
+Alibaba Cloud Linux 3 默认源没有 nginx。安装脚本会自动添加 Nginx 官方源；若你用的是旧版脚本，先手动执行：
+
+```bash
+cat >/etc/yum.repos.d/nginx.repo <<'EOF'
+[nginx-stable]
+name=nginx stable repo
+baseurl=https://nginx.org/packages/centos/8/$basearch/
+gpgcheck=1
+enabled=1
+gpgkey=https://nginx.org/keys/nginx_signing.key
+module_hotfixes=true
+EOF
+dnf -y install nginx
+```
+
+然后再重新跑 `bash deploy/install.sh`。
+
 ## 2. 两种权限
 
 | 权限 | 能做什么 | 命令 |

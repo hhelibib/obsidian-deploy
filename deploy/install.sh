@@ -39,8 +39,32 @@ if ! command -v dnf >/dev/null 2>&1; then
   die "未找到 dnf。本脚本面向 Alibaba Cloud Linux 3 / OpenAnolis。"
 fi
 
+ensure_nginx_repo() {
+  # Alibaba Cloud Linux 3 / Anolis 默认源通常没有 nginx，需加官方源。
+  # releasever 在 alinux3 上是 3，不能用 $releasever，应固定 centos/8。
+  if command -v nginx >/dev/null 2>&1; then
+    return 0
+  fi
+  if dnf list --available nginx >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "==> 默认源无 nginx，添加 Nginx 官方 yum 源（centos/8）"
+  cat >/etc/yum.repos.d/nginx.repo <<'EOF'
+[nginx-stable]
+name=nginx stable repo
+baseurl=https://nginx.org/packages/centos/8/$basearch/
+gpgcheck=1
+enabled=1
+gpgkey=https://nginx.org/keys/nginx_signing.key
+module_hotfixes=true
+EOF
+  dnf -y makecache --repo nginx-stable || true
+}
+
+ensure_nginx_repo
+
+# Base packages first (without nginx), so a nginx-repo glitch is easier to see
 dnf -y install \
-  nginx \
   git \
   rsync \
   curl \
@@ -53,7 +77,11 @@ dnf -y install \
   firewalld \
   policycoreutils-python-utils 2>/dev/null || \
 dnf -y install \
-  nginx git rsync curl tar gzip unzip python3 httpd-tools ca-certificates
+  git rsync curl tar gzip unzip python3 httpd-tools ca-certificates
+
+if ! dnf -y install nginx; then
+  die "无法安装 nginx。Alibaba Cloud Linux 3 需 Nginx 官方源，且服务器须能访问 nginx.org。见 README「Unable to find a match: nginx」。"
+fi
 
 # Node.js 20+
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | tr -d 'v' | cut -d. -f1)" -lt 20 ]]; then
@@ -63,10 +91,14 @@ if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | tr -d 'v' | cut -d. -f1)
 fi
 echo "Node: $(node -v)  npm: $(npm -v)"
 
-# Certbot (best effort)
+# Certbot (best effort; may need EPEL on alinux3)
 if [[ "${SKIP_TLS}" != "1" ]]; then
-  dnf -y install certbot python3-certbot-nginx 2>/dev/null || \
-    echo "警告: 未能通过 dnf 安装 certbot，稍后将尝试跳过或手动签发。"
+  if ! dnf -y install certbot python3-certbot-nginx 2>/dev/null; then
+    dnf -y install dnf-plugin-releasever-adapter --repo alinux3-plus 2>/dev/null || true
+    dnf -y install epel-release 2>/dev/null || true
+    dnf -y install certbot python3-certbot-nginx 2>/dev/null || \
+      echo "警告: 未能通过 dnf 安装 certbot，稍后将尝试跳过或手动签发。"
+  fi
 fi
 
 echo "==> 创建 garden 用户与私有 Git 仓库"
