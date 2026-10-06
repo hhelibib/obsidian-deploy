@@ -223,9 +223,8 @@ npm install --no-fund --no-audit
 echo "==> 安装 Artalk"
 install_artalk() {
   # Artalk 来自 GitHub Releases（约 19MB），不是 yum 包。
-  # 阿里云/腾讯云 yum 镜像帮不上；国内机请走 GitHub 代理或手动下载。
-  local arch raw_arch tmpdir url bin cand ok ver
-  # 默认钉死版本，避免卡在 api.github.com；可用 ARTALK_VERSION=latest 覆盖
+  # 资产文件名带 v：artalk_v2.10.0_linux_amd64.tar.gz（不是 artalk_2.10.0_...）
+  local arch raw_arch tmpdir url asset bin cand ok ver tag
   ver="${ARTALK_VERSION:-v2.10.0}"
   raw_arch="$(uname -m)"
   case "${raw_arch}" in
@@ -240,6 +239,19 @@ install_artalk() {
     return 0
   fi
 
+  # 允许跳过网络：ARTALK_TARBALL=/path/to/artalk_v2.10.0_linux_amd64.tar.gz
+  if [[ -n "${ARTALK_TARBALL:-}" ]]; then
+    [[ -f "${ARTALK_TARBALL}" ]] || die "ARTALK_TARBALL 不存在: ${ARTALK_TARBALL}"
+    tmpdir="$(mktemp -d)"
+    tar -xzf "${ARTALK_TARBALL}" -C "${tmpdir}"
+    bin="$(find "${tmpdir}" -type f -name artalk | head -n 1 || true)"
+    [[ -n "${bin}" && -f "${bin}" ]] || die "ARTALK_TARBALL 中找不到 artalk 可执行文件"
+    install -m 755 "${bin}" /usr/local/bin/artalk
+    rm -rf "${tmpdir}"
+    /usr/local/bin/artalk version || true
+    return 0
+  fi
+
   if [[ "${ver}" == "latest" ]]; then
     echo "==> 查询 Artalk 最新版本（api.github.com，可能较慢）…"
     url="$(curl -fsSL --connect-timeout 10 --max-time 30 \
@@ -248,18 +260,18 @@ install_artalk() {
 pat=re.compile(rf'artalk_.*_linux_{arch}\\.tar\\.gz\$');
 print(next(a['browser_download_url'] for a in d['assets'] if pat.search(a['name'])))")"
   else
-    url="https://github.com/ArtalkJS/Artalk/releases/download/${ver}/artalk_${ver#v}_linux_${arch}.tar.gz"
-    # 兼容 tag 写成 2.10.0（无 v 前缀）
-    if [[ "${ver}" != v* ]]; then
-      url="https://github.com/ArtalkJS/Artalk/releases/download/v${ver}/artalk_${ver}_linux_${arch}.tar.gz"
-    fi
+    # 统一成带 v 的 tag / 文件名：v2.10.0 + artalk_v2.10.0_linux_amd64.tar.gz
+    tag="${ver}"
+    [[ "${tag}" == v* ]] || tag="v${tag}"
+    asset="artalk_${tag}_linux_${arch}.tar.gz"
+    url="https://github.com/ArtalkJS/Artalk/releases/download/${tag}/${asset}"
   fi
 
   tmpdir="$(mktemp -d)"
   ok=0
-  # 国内优先代理，再直连 GitHub；均带超时，避免一直卡住
   for cand in \
     "https://ghproxy.net/${url}" \
+    "https://gh.llkk.cc/${url}" \
     "https://mirror.ghproxy.com/${url}" \
     "${url}"
   do
@@ -272,12 +284,17 @@ print(next(a['browser_download_url'] for a in d['assets'] if pat.search(a['name'
     echo "==> 该源失败，换下一个…"
   done
   [[ "${ok}" -eq 1 ]] || die "无法下载 Artalk（GitHub/代理均失败）。
-可 Ctrl+C 后手动执行：
+替代方案 A（服务器上，注意文件名带 v）：
   cd /tmp
-  curl -fL -o artalk.tar.gz https://ghproxy.net/${url}
+  curl -fL -o artalk.tar.gz \\
+    https://ghproxy.net/https://github.com/ArtalkJS/Artalk/releases/download/v2.10.0/artalk_v2.10.0_linux_${arch}.tar.gz
   tar -xzf artalk.tar.gz
   install -m 755 artalk_*/artalk /usr/local/bin/artalk
-  artalk version
+
+替代方案 B（能访问 GitHub 的电脑下载后 scp）：
+  scp artalk_v2.10.0_linux_${arch}.tar.gz root@服务器:/tmp/
+  ARTALK_TARBALL=/tmp/artalk_v2.10.0_linux_${arch}.tar.gz DOMAIN=你的域名 bash deploy/install.sh
+
 然后再重跑 install.sh"
 
   tar -xzf "${tmpdir}/artalk.tar.gz" -C "${tmpdir}"

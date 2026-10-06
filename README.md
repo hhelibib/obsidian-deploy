@@ -55,15 +55,13 @@ bash deploy/install.sh
 SKIP_TLS=1 DOMAIN=你的域名.example.com bash deploy/install.sh
 ```
 
-### 若卡在「安装 Artalk」
+### 若卡在 / 失败于「安装 Artalk」
 
-Artalk **不是 yum 包**，要从 GitHub Releases 下载二进制。  
-配置阿里云/腾讯云 **yum 镜像解决不了**这一步；国内 ECS 直连 GitHub 常会一直卡住。
+Artalk **不是 yum 包**，要从 GitHub Releases 下载。文件名必须带 **`v`**：
 
-处理：
+`artalk_v2.10.0_linux_amd64.tar.gz`（不是 `artalk_2.10.0_...`）
 
-1. `Ctrl+C` 中断当前安装  
-2. 用代理手动下载并安装：
+**方案 A — 服务器上用代理（推荐先试）：**
 
 ```bash
 cd /tmp
@@ -72,11 +70,22 @@ curl -fL -o artalk.tar.gz \
 tar -xzf artalk.tar.gz
 install -m 755 artalk_v2.10.0_linux_amd64/artalk /usr/local/bin/artalk
 artalk version
+DOMAIN=你的域名 bash deploy/install.sh
 ```
 
-3. 再重跑 `DOMAIN=你的域名 bash deploy/install.sh`（已装好的 Artalk 会跳过下载）
+**方案 B — 本机能访问 GitHub 时，下载后 scp 上去：**
 
-新版脚本会优先走 `ghproxy.net`，并给 curl 加超时，避免无限等待。
+```bash
+# 本机
+curl -fL -O https://github.com/ArtalkJS/Artalk/releases/download/v2.10.0/artalk_v2.10.0_linux_amd64.tar.gz
+scp artalk_v2.10.0_linux_amd64.tar.gz root@你的服务器IP:/tmp/
+
+# 服务器
+ARTALK_TARBALL=/tmp/artalk_v2.10.0_linux_amd64.tar.gz \
+  DOMAIN=你的域名 bash /root/garden-deploy/deploy/install.sh
+```
+
+阿里云/腾讯云 yum 镜像解决不了这一步。
 
 ### 若报错 `Unable to find a match: nginx`
 
