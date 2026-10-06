@@ -221,7 +221,7 @@ npm install --no-fund --no-audit
 
 echo "==> 安装 Artalk"
 install_artalk() {
-  local arch raw_arch asset tmpdir url version
+  local arch raw_arch tmpdir url bin
   raw_arch="$(uname -m)"
   case "${raw_arch}" in
     x86_64|amd64) arch="amd64" ;;
@@ -239,9 +239,17 @@ print(next(a['browser_download_url'] for a in d['assets'] if pat.search(a['name'
   fi
 
   tmpdir="$(mktemp -d)"
-  curl -fsSL "${url}" -o "${tmpdir}/artalk.tar.gz"
+  # GitHub 直连失败时，可尝试镜像（仅下载）
+  if ! curl -fsSL "${url}" -o "${tmpdir}/artalk.tar.gz"; then
+    echo "==> GitHub 下载失败，尝试 ghproxy 镜像…"
+    curl -fsSL "https://ghproxy.net/${url}" -o "${tmpdir}/artalk.tar.gz" \
+      || die "无法下载 Artalk。请确认能访问 GitHub Releases，或手动下载后放到 /usr/local/bin/artalk"
+  fi
   tar -xzf "${tmpdir}/artalk.tar.gz" -C "${tmpdir}"
-  install -m 755 "${tmpdir}/artalk" /usr/local/bin/artalk
+  # 新版压缩包在子目录里：artalk_vX.Y.Z_linux_amd64/artalk
+  bin="$(find "${tmpdir}" -type f -name artalk | head -n 1 || true)"
+  [[ -n "${bin}" && -f "${bin}" ]] || die "Artalk 压缩包中找不到可执行文件 artalk"
+  install -m 755 "${bin}" /usr/local/bin/artalk
   rm -rf "${tmpdir}"
   /usr/local/bin/artalk version || true
 }
