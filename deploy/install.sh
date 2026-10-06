@@ -39,16 +39,51 @@ if ! command -v dnf >/dev/null 2>&1; then
   die "未找到 dnf。本脚本面向 Alibaba Cloud Linux 3 / OpenAnolis。"
 fi
 
-ensure_nginx_repo() {
-  # Alibaba Cloud Linux 3 / Anolis 默认源通常没有 nginx，需加官方源。
-  # releasever 在 alinux3 上是 3，不能用 $releasever，应固定 centos/8。
+install_nginx() {
   if command -v nginx >/dev/null 2>&1; then
+    echo "==> nginx 已安装: $(nginx -v 2>&1 || true)"
     return 0
   fi
-  if dnf list --available nginx >/dev/null 2>&1; then
+
+  # 1) 普通包名（少数镜像源已带）
+  if dnf -y install nginx; then
     return 0
   fi
-  echo "==> 默认源无 nginx，添加 Nginx 官方 yum 源（centos/8）"
+
+  # 2) AppStream 模块（Alibaba Cloud Linux 3 / Anolis 推荐，走阿里云镜像，不依赖 nginx.org）
+  echo "==> 尝试通过 dnf module 安装 nginx…"
+  dnf -y module reset nginx 2>/dev/null || true
+  local stream
+  for stream in 1.22 1.20 1.18 1.16 1.14; do
+    if dnf -y module enable "nginx:${stream}" 2>/dev/null \
+      && dnf -y module install "nginx:${stream}" 2>/dev/null; then
+      command -v nginx >/dev/null 2>&1 && return 0
+    fi
+    if dnf -y install "@nginx:${stream}" 2>/dev/null; then
+      command -v nginx >/dev/null 2>&1 && return 0
+    fi
+  done
+
+  # 3) 直接从阿里云 Anolis 镜像拉 RPM（国内可访问）
+  echo "==> 尝试从 mirrors.aliyun.com/anolis 安装 nginx RPM…"
+  local arch raw_arch base ver fs_rpm nginx_rpm
+  raw_arch="$(uname -m)"
+  case "${raw_arch}" in
+    x86_64|amd64) arch="x86_64" ;;
+    aarch64|arm64) arch="aarch64" ;;
+    *) arch="${raw_arch}" ;;
+  esac
+  # 固定一组在阿里云镜像上可下载的 1.22 包名
+  ver="1.22.1-1.0.2.module+an8.9.0+11165+32bf18ca"
+  base="https://mirrors.aliyun.com/anolis/8.9/AppStream/${arch}/os/Packages"
+  fs_rpm="${base}/nginx-filesystem-${ver}.noarch.rpm"
+  nginx_rpm="${base}/nginx-${ver}.${arch}.rpm"
+  if dnf -y install "${fs_rpm}" "${nginx_rpm}"; then
+    command -v nginx >/dev/null 2>&1 && return 0
+  fi
+
+  # 4) 最后才试 nginx.org（国内 ECS 常不通）
+  echo "==> 尝试添加 nginx.org 官方源…"
   cat >/etc/yum.repos.d/nginx.repo <<'EOF'
 [nginx-stable]
 name=nginx stable repo
@@ -59,11 +94,14 @@ gpgkey=https://nginx.org/keys/nginx_signing.key
 module_hotfixes=true
 EOF
   dnf -y makecache --repo nginx-stable || true
+  if dnf -y install nginx; then
+    return 0
+  fi
+
+  return 1
 }
 
-ensure_nginx_repo
-
-# Base packages first (without nginx), so a nginx-repo glitch is easier to see
+# Base packages first (without nginx)
 dnf -y install \
   git \
   rsync \
@@ -79,8 +117,15 @@ dnf -y install \
 dnf -y install \
   git rsync curl tar gzip unzip python3 httpd-tools ca-certificates
 
-if ! dnf -y install nginx; then
-  die "无法安装 nginx。Alibaba Cloud Linux 3 需 Nginx 官方源，且服务器须能访问 nginx.org。见 README「Unable to find a match: nginx」。"
+if ! install_nginx; then
+  die "无法安装 nginx。请在服务器上依次执行：
+  dnf -y module reset nginx
+  dnf -y module enable nginx:1.22
+  dnf -y module install nginx:1.22
+若仍失败，把下面命令的完整输出发回来：
+  dnf module list nginx
+  dnf repolist
+  curl -I https://mirrors.aliyun.com/anolis/8.9/AppStream/x86_64/os/Packages/"
 fi
 
 # Node.js 20+

@@ -57,22 +57,26 @@ SKIP_TLS=1 DOMAIN=你的域名.example.com bash deploy/install.sh
 
 ### 若报错 `Unable to find a match: nginx`
 
-Alibaba Cloud Linux 3 默认源没有 nginx。安装脚本会自动添加 Nginx 官方源；若你用的是旧版脚本，先手动执行：
+国内 ECS 常访问不了 `nginx.org`。请优先用 **Anolis/阿里云模块源**（不依赖 nginx.org）：
 
 ```bash
-cat >/etc/yum.repos.d/nginx.repo <<'EOF'
-[nginx-stable]
-name=nginx stable repo
-baseurl=https://nginx.org/packages/centos/8/$basearch/
-gpgcheck=1
-enabled=1
-gpgkey=https://nginx.org/keys/nginx_signing.key
-module_hotfixes=true
-EOF
-dnf -y install nginx
+dnf -y module reset nginx
+dnf -y module enable nginx:1.22
+dnf -y module install nginx:1.22
+nginx -v
 ```
 
-然后再重新跑 `bash deploy/install.sh`。
+若模块流不可用，直接装阿里云镜像上的 RPM：
+
+```bash
+VER='1.22.1-1.0.2.module+an8.9.0+11165+32bf18ca'
+BASE='https://mirrors.aliyun.com/anolis/8.9/AppStream/x86_64/os/Packages'
+dnf -y install \
+  "${BASE}/nginx-filesystem-${VER}.noarch.rpm" \
+  "${BASE}/nginx-${VER}.x86_64.rpm"
+```
+
+装好后再重新跑 `bash deploy/install.sh`。
 
 ## 2. 两种权限
 
