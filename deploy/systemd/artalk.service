@@ -1,0 +1,21 @@
+[Unit]
+Description=Artalk comment server for Garden
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=artalk
+Group=artalk
+WorkingDirectory=/var/lib/artalk
+ExecStart=/usr/local/bin/artalk server -w /var/lib/artalk -c /etc/artalk/artalk.yml
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/artalk
+
+[Install]
+WantedBy=multi-user.target

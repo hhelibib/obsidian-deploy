@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Deploy hook: update worktree and rebuild Quartz after a successful push.
+# Installed to /home/garden/vault.git/hooks/post-receive by install.sh (paths rewritten).
+set -euo pipefail
+
+VAULT_BARE="${VAULT_BARE:-/home/garden/vault.git}"
+VAULT_WORKTREE="${VAULT_WORKTREE:-/home/garden/vault}"
+REBUILD_SCRIPT="${REBUILD_SCRIPT:-/root/garden-deploy/deploy/rebuild.sh}"
+LOCK_FILE="/tmp/garden-rebuild.lock"
+
+mkdir -p "${VAULT_WORKTREE}"
+rm -rf "${VAULT_WORKTREE}/.git"
+git --git-dir="${VAULT_BARE}" --work-tree="${VAULT_WORKTREE}" checkout -f main 2>/dev/null \
+  || git --git-dir="${VAULT_BARE}" --work-tree="${VAULT_WORKTREE}" checkout -f master
+
+if [[ ! -x "${REBUILD_SCRIPT}" ]]; then
+  echo "警告: 找不到可执行的 rebuild 脚本: ${REBUILD_SCRIPT}" >&2
+  exit 0
+fi
+
+(
+  flock -n 9 || {
+    echo "已有构建在进行，跳过本次。"
+    exit 0
+  }
+  echo "开始重建网站…"
+  # When installed by install.sh, this becomes: sudo /root/garden-deploy/deploy/rebuild.sh
+  if [[ "$(id -u)" -eq 0 ]]; then
+    bash "${REBUILD_SCRIPT}"
+  else
+    sudo "${REBUILD_SCRIPT}"
+  fi
+  echo "重建完成。"
+) 9>"${LOCK_FILE}"

@@ -1,0 +1,86 @@
+# Artalk — listen on localhost only; Nginx reverse-proxies /artalk/
+host: "127.0.0.1"
+port: 23366
+app_key: "__ARTALK_APP_KEY__"
+debug: false
+locale: zh-CN
+timezone: Asia/Shanghai
+site_default: Garden
+site_url: "https://__DOMAIN__"
+
+db:
+  type: sqlite
+  file: /var/lib/artalk/data/artalk.db
+  table_prefix: ""
+
+http:
+  body_limit: 10
+  proxy_header: "X-Real-IP"
+
+log:
+  enabled: true
+  filename: /var/lib/artalk/data/artalk.log
+
+cache:
+  enabled: true
+  type: builtin
+  expires: 30
+  warm_up: false
+
+trusted_domains:
+  - "https://__DOMAIN__"
+
+ssl:
+  enabled: false
+
+moderator:
+  pending_default: false
+  api_fail_block: false
+
+captcha:
+  enabled: true
+  always: false
+  captcha_type: image
+  action_limit: 3
+  action_reset: 60
+
+img_upload:
+  enabled: true
+  path: /var/lib/artalk/data/artalk-img/
+  max_size: 5
+  public_path: null
+
+email:
+  enabled: false
+
+auth:
+  enabled: false
+  anonymous: true
+
+frontend:
+  placeholder: "留下你的想法…"
+  noComment: "还没有评论，来做第一个吧"
+  sendBtn: "发送"
+  editorTravel: true
+  vote: true
+  voteDown: false
+  uaBadge: false
+  listSort: true
+  preview: true
+  flatMode: auto
+  darkMode: inherit
+  nestMax: 2
+  nestSort: DATE_ASC
+  gravatar:
+    mirror: https://cravatar.cn/avatar/
+    params: sha256=1&d=mp&s=240
+  pagination:
+    pageSize: 20
+    readMore: true
+    autoLoad: true
+  heightLimit:
+    content: 300
+    children: 400
+    scrollable: false
+  reqTimeout: 15000
+  versionCheck: false
