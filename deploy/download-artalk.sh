@@ -100,12 +100,38 @@ verify_tarball() {
   return 0
 }
 
+# 组装兼容旧版 curl 的参数（Alibaba Cloud Linux 3 自带 curl 可能没有 --retry-all-errors）
+curl_download() {
+  # usage: curl_download <resume:0|1> <output> <url>
+  local resume="$1"
+  local output="$2"
+  local url="$3"
+  local -a args
+
+  args=(-fL --connect-timeout 20 --retry 8 --retry-delay 3)
+  # curl >= 7.71
+  if curl --help all 2>/dev/null | grep -q -- '--retry-all-errors'; then
+    args+=(--retry-all-errors)
+  fi
+  if [[ "${resume}" == "1" ]]; then
+    args+=(-C -)
+  fi
+  # 旧 curl 可能没有 --progress-bar 的稳定行为；有则用
+  if curl --help 2>/dev/null | grep -q -- '--progress-bar'; then
+    args+=(--progress-bar)
+  fi
+  args+=(-o "${output}" "${url}")
+  curl "${args[@]}"
+}
+
 # 断点续传到 dest_part，成功后校验并原子移动到 dest_final
 resume_download() {
   local url="$1"
   local dest_part="$2"
   local dest_final="$3"
   local expect_sha="${4:-}"
+  local ec=0
+  local existing=0
 
   mkdir -p "$(dirname "${dest_part}")"
 
@@ -115,7 +141,6 @@ resume_download() {
     return 0
   fi
 
-  local existing=0
   if [[ -f "${dest_part}" ]]; then
     existing="$(wc -c <"${dest_part}" | tr -d ' ')"
     echo "==> 发现未完成下载 ${existing} 字节，尝试续传…"
@@ -124,18 +149,12 @@ resume_download() {
   echo "==> 下载: ${url}"
   echo "    临时文件: ${dest_part}"
 
-  # -C - 断点续传；不设短 max-time，避免大文件中途被掐断
-  # --retry / --retry-all-errors：单源网络抖动时自动重试（续传继续）
-  if curl -fL \
-    --connect-timeout 20 \
-    --retry 8 \
-    --retry-delay 3 \
-    --retry-all-errors \
-    -C - \
-    --progress-bar \
-    -o "${dest_part}" \
-    "${url}"
-  then
+  set +e
+  curl_download 1 "${dest_part}" "${url}"
+  ec=$?
+  set -e
+
+  if [[ "${ec}" -eq 0 ]]; then
     if verify_tarball "${dest_part}" "${expect_sha}"; then
       mv -f "${dest_part}" "${dest_final}"
       echo "==> 下载完成: ${dest_final} ($(wc -c <"${dest_final}" | tr -d ' ') 字节)"
@@ -146,28 +165,24 @@ resume_download() {
     return 1
   fi
 
-  local ec=$?
   # curl 33 = HTTP range not satisfiable（本地残片与远端不一致）→ 清掉重下
   if [[ "${ec}" -eq 33 ]]; then
-    echo "==> 续传区间无效 (curl 33)，清除残片后重试本源"
+    echo "==> 续传区间无效 (curl 33)，清除残片后整文件重下"
     rm -f "${dest_part}"
-    if curl -fL \
-      --connect-timeout 20 \
-      --retry 5 \
-      --retry-delay 3 \
-      --retry-all-errors \
-      --progress-bar \
-      -o "${dest_part}" \
-      "${url}" \
-      && verify_tarball "${dest_part}" "${expect_sha}"
-    then
+    set +e
+    curl_download 0 "${dest_part}" "${url}"
+    ec=$?
+    set -e
+    if [[ "${ec}" -eq 0 ]] && verify_tarball "${dest_part}" "${expect_sha}"; then
       mv -f "${dest_part}" "${dest_final}"
       echo "==> 下载完成: ${dest_final}"
       return 0
     fi
   fi
 
-  echo "==> 本源失败 (curl exit ${ec})，已下载 $([ -f "${dest_part}" ] && wc -c <"${dest_part}" | tr -d ' ' || echo 0) 字节，换源时将继续续传"
+  existing=0
+  [[ -f "${dest_part}" ]] && existing="$(wc -c <"${dest_part}" | tr -d ' ')"
+  echo "==> 本源失败 (curl exit ${ec})，已下载 ${existing} 字节，换源时将继续续传"
   return 1
 }
 
