@@ -55,61 +55,44 @@ bash deploy/install.sh
 SKIP_TLS=1 DOMAIN=你的域名.example.com bash deploy/install.sh
 ```
 
-### 若卡在 / 失败于「安装 Artalk」
+### 下载 / 重装 Artalk（支持断点续传）
 
-Artalk **不是 yum 包**，要从 GitHub Releases 下载。文件名必须带 **`v`**：
-
-`artalk_v2.10.0_linux_amd64.tar.gz`（不是 `artalk_2.10.0_...`）
-
-**方案 A — 服务器上用代理（推荐先试）：**
+Artalk **不是 yum 包**，用专用脚本从 GitHub（经代理）下载。文件名必须带 **`v`**：`artalk_v2.10.0_linux_amd64.tar.gz`。
 
 ```bash
-cd /tmp
-curl -fL -o artalk.tar.gz \
-  https://ghproxy.net/https://github.com/ArtalkJS/Artalk/releases/download/v2.10.0/artalk_v2.10.0_linux_amd64.tar.gz
-tar -xzf artalk.tar.gz
-install -m 755 artalk_v2.10.0_linux_amd64/artalk /usr/local/bin/artalk
-artalk version
-DOMAIN=你的域名 bash deploy/install.sh
+# 推荐：可反复执行，中断后续传；校验 SHA256 后安装
+cd /root/garden-deploy
+FORCE_ARTALK_REINSTALL=1 bash deploy/download-artalk.sh
+
+# 只下载到缓存、不安装
+bash deploy/download-artalk.sh --download-only
+# 缓存默认: /var/cache/garden/artalk_v2.10.0_linux_*.tar.gz
+# 未完成残片: 同名 .part
 ```
 
-**方案 B — 本机能访问 GitHub 时，下载后 scp 上去：**
+本机下好再上传：
 
 ```bash
-# 本机
-curl -fL -O https://github.com/ArtalkJS/Artalk/releases/download/v2.10.0/artalk_v2.10.0_linux_amd64.tar.gz
-scp artalk_v2.10.0_linux_amd64.tar.gz root@你的服务器IP:/tmp/
-
-# 服务器
-ARTALK_TARBALL=/tmp/artalk_v2.10.0_linux_amd64.tar.gz \
-  DOMAIN=你的域名 bash /root/garden-deploy/deploy/install.sh
+scp artalk_v2.10.0_linux_amd64.tar.gz root@服务器:/var/cache/garden/
+ARTALK_TARBALL=/var/cache/garden/artalk_v2.10.0_linux_amd64.tar.gz \
+  bash /root/garden-deploy/deploy/download-artalk.sh
 ```
 
-阿里云/腾讯云 yum 镜像解决不了这一步。
+装好后继续：`DOMAIN=你的域名 bash deploy/install.sh`  
+（若 `artalk version` 已正常，安装脚本会跳过下载。）
 
-### 若 `artalk` 服务 SEGV（段错误反复重启）
+### 若 `artalk version` 直接 Segmentation fault
 
-先放宽 systemd 单元并手动验证：
+二进制损坏或架构不对。用续传脚本强制重装：
 
 ```bash
-# 1) 确认架构与二进制正常
 uname -m
+FORCE_ARTALK_REINSTALL=1 bash /root/garden-deploy/deploy/download-artalk.sh
 file /usr/local/bin/artalk
-/usr/local/bin/artalk version
-
-# 2) 停掉服务后前台试跑（看是否仍崩溃）
-systemctl stop artalk
-sudo -u artalk /usr/local/bin/artalk server -w /var/lib/artalk -c /etc/artalk/artalk.yml
-# 若能跑，另开终端 curl http://127.0.0.1:23366/ 应有响应；Ctrl+C 结束
-
-# 3) 安装仓库里已放宽沙箱的 unit，再启服务
-cp /root/garden-deploy/deploy/systemd/artalk.service /etc/systemd/system/artalk.service
-systemctl daemon-reload
+artalk version
 systemctl restart artalk
 systemctl status artalk --no-pager
 ```
-
-若前台也 SEGV：重新下载正确架构的二进制（`amd64` / `arm64` 与 `uname -m` 一致），或换稍旧版本 `v2.9.1`。
 
 ### 若报错 `Unable to find a match: nginx`
 

@@ -220,91 +220,14 @@ bash "${SCRIPT_DIR}/apply-quartz-overlay.sh" "${QUARTZ_DIR}" "${DOMAIN}"
 cd "${QUARTZ_DIR}"
 npm install --no-fund --no-audit
 
-echo "==> 安装 Artalk"
-install_artalk() {
-  # Artalk 来自 GitHub Releases（约 19MB），不是 yum 包。
-  # 资产文件名带 v：artalk_v2.10.0_linux_amd64.tar.gz（不是 artalk_2.10.0_...）
-  local arch raw_arch tmpdir url asset bin cand ok ver tag
-  ver="${ARTALK_VERSION:-v2.10.0}"
-  raw_arch="$(uname -m)"
-  case "${raw_arch}" in
-    x86_64|amd64) arch="amd64" ;;
-    aarch64|arm64) arch="arm64" ;;
-    *) die "不支持的架构: ${raw_arch}" ;;
-  esac
-
-  if [[ -x /usr/local/bin/artalk && "${FORCE_ARTALK_REINSTALL:-0}" != "1" ]]; then
-    echo "==> 已存在 /usr/local/bin/artalk，跳过下载"
-    /usr/local/bin/artalk version || true
-    return 0
-  fi
-
-  # 允许跳过网络：ARTALK_TARBALL=/path/to/artalk_v2.10.0_linux_amd64.tar.gz
-  if [[ -n "${ARTALK_TARBALL:-}" ]]; then
-    [[ -f "${ARTALK_TARBALL}" ]] || die "ARTALK_TARBALL 不存在: ${ARTALK_TARBALL}"
-    tmpdir="$(mktemp -d)"
-    tar -xzf "${ARTALK_TARBALL}" -C "${tmpdir}"
-    bin="$(find "${tmpdir}" -type f -name artalk | head -n 1 || true)"
-    [[ -n "${bin}" && -f "${bin}" ]] || die "ARTALK_TARBALL 中找不到 artalk 可执行文件"
-    install -m 755 "${bin}" /usr/local/bin/artalk
-    rm -rf "${tmpdir}"
-    /usr/local/bin/artalk version || true
-    return 0
-  fi
-
-  if [[ "${ver}" == "latest" ]]; then
-    echo "==> 查询 Artalk 最新版本（api.github.com，可能较慢）…"
-    url="$(curl -fsSL --connect-timeout 10 --max-time 30 \
-      https://api.github.com/repos/ArtalkJS/Artalk/releases/latest \
-      | python3 -c "import sys,json,re; d=json.load(sys.stdin); arch='${arch}';
-pat=re.compile(rf'artalk_.*_linux_{arch}\\.tar\\.gz\$');
-print(next(a['browser_download_url'] for a in d['assets'] if pat.search(a['name'])))")"
-  else
-    # 统一成带 v 的 tag / 文件名：v2.10.0 + artalk_v2.10.0_linux_amd64.tar.gz
-    tag="${ver}"
-    [[ "${tag}" == v* ]] || tag="v${tag}"
-    asset="artalk_${tag}_linux_${arch}.tar.gz"
-    url="https://github.com/ArtalkJS/Artalk/releases/download/${tag}/${asset}"
-  fi
-
-  tmpdir="$(mktemp -d)"
-  ok=0
-  for cand in \
-    "https://ghproxy.net/${url}" \
-    "https://gh.llkk.cc/${url}" \
-    "https://mirror.ghproxy.com/${url}" \
-    "${url}"
-  do
-    echo "==> 下载 Artalk: ${cand}"
-    if curl -fL --connect-timeout 15 --max-time 180 --retry 2 --retry-delay 2 \
-      -o "${tmpdir}/artalk.tar.gz" "${cand}"; then
-      ok=1
-      break
-    fi
-    echo "==> 该源失败，换下一个…"
-  done
-  [[ "${ok}" -eq 1 ]] || die "无法下载 Artalk（GitHub/代理均失败）。
-替代方案 A（服务器上，注意文件名带 v）：
-  cd /tmp
-  curl -fL -o artalk.tar.gz \\
-    https://ghproxy.net/https://github.com/ArtalkJS/Artalk/releases/download/v2.10.0/artalk_v2.10.0_linux_${arch}.tar.gz
-  tar -xzf artalk.tar.gz
-  install -m 755 artalk_*/artalk /usr/local/bin/artalk
-
-替代方案 B（能访问 GitHub 的电脑下载后 scp）：
-  scp artalk_v2.10.0_linux_${arch}.tar.gz root@服务器:/tmp/
-  ARTALK_TARBALL=/tmp/artalk_v2.10.0_linux_${arch}.tar.gz DOMAIN=你的域名 bash deploy/install.sh
-
-然后再重跑 install.sh"
-
-  tar -xzf "${tmpdir}/artalk.tar.gz" -C "${tmpdir}"
-  bin="$(find "${tmpdir}" -type f -name artalk | head -n 1 || true)"
-  [[ -n "${bin}" && -f "${bin}" ]] || die "Artalk 压缩包中找不到可执行文件 artalk"
-  install -m 755 "${bin}" /usr/local/bin/artalk
-  rm -rf "${tmpdir}"
-  /usr/local/bin/artalk version || true
-}
-install_artalk
+echo "==> 安装 Artalk（支持断点续传，可单独重跑 download-artalk.sh）"
+# FORCE_ARTALK_REINSTALL=1 可强制重装（当前二进制 SEGV 时请加上）
+if ! bash "${SCRIPT_DIR}/download-artalk.sh"; then
+  die "Artalk 下载/安装失败。可单独重试（会续传）:
+  FORCE_ARTALK_REINSTALL=1 bash ${SCRIPT_DIR}/download-artalk.sh
+或使用本机已下载的包:
+  ARTALK_TARBALL=/path/to/artalk_v2.10.0_linux_amd64.tar.gz bash ${SCRIPT_DIR}/download-artalk.sh"
+fi
 
 if ! id artalk >/dev/null 2>&1; then
   useradd --system --home "${ARTALK_DIR}" --shell /sbin/nologin artalk
