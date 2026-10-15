@@ -87,6 +87,30 @@ ARTALK_TARBALL=/tmp/artalk_v2.10.0_linux_amd64.tar.gz \
 
 阿里云/腾讯云 yum 镜像解决不了这一步。
 
+### 若 `artalk` 服务 SEGV（段错误反复重启）
+
+先放宽 systemd 单元并手动验证：
+
+```bash
+# 1) 确认架构与二进制正常
+uname -m
+file /usr/local/bin/artalk
+/usr/local/bin/artalk version
+
+# 2) 停掉服务后前台试跑（看是否仍崩溃）
+systemctl stop artalk
+sudo -u artalk /usr/local/bin/artalk server -w /var/lib/artalk -c /etc/artalk/artalk.yml
+# 若能跑，另开终端 curl http://127.0.0.1:23366/ 应有响应；Ctrl+C 结束
+
+# 3) 安装仓库里已放宽沙箱的 unit，再启服务
+cp /root/garden-deploy/deploy/systemd/artalk.service /etc/systemd/system/artalk.service
+systemctl daemon-reload
+systemctl restart artalk
+systemctl status artalk --no-pager
+```
+
+若前台也 SEGV：重新下载正确架构的二进制（`amd64` / `arm64` 与 `uname -m` 一致），或换稍旧版本 `v2.9.1`。
+
 ### 若报错 `Unable to find a match: nginx`
 
 国内 ECS 常访问不了 `nginx.org`。请优先用 **Anolis/阿里云模块源**（不依赖 nginx.org）：
